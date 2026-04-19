@@ -6,8 +6,8 @@ Faithful translation of hidro.lua to DisSModel + RasterBackend.
 from __future__ import annotations
 
 import numpy as np
-from dissmodel.geo import RasterModel
 from dissmodel.geo.raster.backend import RasterBackend
+from dissmodel.geo.raster.sync_model import SyncRasterModel
 
 from coastal_dynamics.common.constants import (
     USOS_INUNDADOS,
@@ -16,15 +16,20 @@ from coastal_dynamics.common.constants import (
 )
 
 
-class FloodModel(RasterModel):
+class FloodModel(SyncRasterModel):
     """
     Hydrological model (hidro.lua) → DisSModel + RasterBackend.
+
+    Uses shared snapshot semantics (auto_sync=False): the ``StepSyncModel``
+    created in the executor freezes "uso" and "alt" in ``"uso_past"`` /
+    ``"alt_past"`` before this model and MangroveModel run, ensuring both
+    read the state at the beginning of the step — equivalent to TerraME's
+    ``cell.past[attr]``.
 
     Parameters
     ----------
     backend       : RasterBackend containing arrays "uso" and "alt"
     taxa_elevacao : meters/year — IPCC RCP8.5 ≈ 0.011
-    aim_base      : base tidal influence height in meters. Default: 6.0
     """
 
     def setup(
@@ -33,8 +38,10 @@ class FloodModel(RasterModel):
         taxa_elevacao: float = 0.011,
     ) -> None:
         super().setup(backend)
-        self.taxa_elevacao = taxa_elevacao
+        self.land_use_types    = ["uso", "alt"]
+        self.auto_sync         = False   # StepSyncModel handles synchronization
 
+        self.taxa_elevacao     = taxa_elevacao
         self.flooded_cells     = 0
         self.newly_flooded     = 0
         self.current_sea_level = 0.0
@@ -49,8 +56,10 @@ class FloodModel(RasterModel):
             "mask", np.ones((rows, cols), dtype=bool)
         ).astype(bool)
 
-        uso_past = self.backend.get("uso").copy()
-        alt_past = self.backend.get("alt").copy()
+        # read shared snapshot frozen by StepSyncModel at step start
+        # equivalent to TerraME's cell.past["uso"] / cell.past["alt"]
+        uso_past = self.backend.get("uso_past")
+        alt_past = self.backend.get("alt_past")
 
         # source cells: already flooded or sea — only within valid area
         eh_fonte = np.isin(uso_past, USOS_INUNDADOS) & (alt_past >= 0) & mask
@@ -99,6 +108,3 @@ class FloodModel(RasterModel):
         self.flooded_cells     = int(np.sum(inund))
         self.newly_flooded     = int(np.sum(novas))
         self.current_sea_level = round(nivel_mar, 4)
-
-
-# ─────────────────────────────────────────────────────────────────────────────

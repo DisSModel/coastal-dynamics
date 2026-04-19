@@ -17,18 +17,18 @@ Input contract
 
 Output artifacts
 ----------------
-  scatter.png  — 3 scatter plots (uso, solo, alt) at the last checkpoint
-  report.md    — per-step accuracy table + runtime
+  scatter.png  -- 3 scatter plots (uso, solo, alt) at the last checkpoint
+  report.md    -- per-step accuracy table + runtime
 
 Usage
 -----
-    python coastal_dynamics/executor/coastal_raster_validation_executor.py run \\
-      --input  examples/data/input/elevacao_pol.zip \\
-      --output examples/data/output/validation \\
-      --param  golden_dir=tests/fixtures/golden \\
-      --param  end_time=30 \\
-      --param  taxa_elevacao=0.05 \\
-      --param  altura_mare=6.0 \\
+    python coastal_dynamics/executor/coastal_raster_validation_executor.py run \
+      --input  examples/data/input/elevacao_pol.zip \
+      --output examples/data/output/validation \
+      --param  golden_dir=tests/fixtures/golden \
+      --param  end_time=30 \
+      --param  taxa_elevacao=0.05 \
+      --param  altura_mare=6.0 \
       --param  checkpoints=[1,5,10,15,20,25,30]
 """
 from __future__ import annotations
@@ -48,6 +48,7 @@ import pandas as pd
 from dissmodel.core               import Environment
 from dissmodel.executor           import ExperimentRecord, ModelExecutor
 from dissmodel.executor.cli       import run_cli
+from dissmodel.geo.raster.sync_model import StepSyncModel
 from dissmodel.io                 import load_dataset
 from dissmodel.io._utils          import write_bytes, write_text
 from dissmodel.executor.config    import settings
@@ -83,7 +84,7 @@ class CoastalRasterValidationExecutor(ModelExecutor):
         _normalize_params(record.parameters)
         checkpoints = record.parameters.get("checkpoints", DEFAULT_CHECKPOINTS)
 
-        # ── shapefile ─────────────────────────────────────────────────────────
+        # shapefile
         gdf, checksum = load_dataset(record.source.uri, fmt="vector")
         record.source.checksum = checksum
 
@@ -94,7 +95,7 @@ class CoastalRasterValidationExecutor(ModelExecutor):
         gdf = gdf.sort_values(["row", "col"]).reset_index(drop=True)
         record.add_log(f"Loaded shapefile: {len(gdf):,} cells  crs={gdf.crs}")
 
-        # ── golden CSVs ───────────────────────────────────────────────────────
+        # golden CSVs
         golden_dir = pathlib.Path(record.parameters["golden_dir"])
         golden_map: dict[int, pd.DataFrame] = {}
 
@@ -117,7 +118,7 @@ class CoastalRasterValidationExecutor(ModelExecutor):
         _normalize_params(record.parameters)
 
         if not record.source.uri:
-            raise ValueError("source.uri is empty — pass the input shapefile.")
+            raise ValueError("source.uri is empty -- pass the input shapefile.")
 
         if "golden_dir" not in record.parameters:
             raise ValueError(
@@ -154,6 +155,11 @@ class CoastalRasterValidationExecutor(ModelExecutor):
         backend, rows_idx, cols_idx = _build_raster(gdf_orig)
 
         env = Environment(start_time=1, end_time=end_time)
+
+        # StepSyncModel BEFORE the models -- salabim creation-order guarantee.
+        # Freezes uso/alt/solo in _past before FloodModel and MangroveModel
+        # execute in each timestep, replicating TerraME's cs:synchronize().
+        StepSyncModel(backend=backend, bands=["uso", "alt", "solo"])
         RasterFlood(backend=backend, taxa_elevacao=taxa_elevacao)
         RasterMangue(backend=backend, taxa_elevacao=taxa_elevacao, altura_mare=altura_mare)
 
@@ -276,7 +282,7 @@ def _build_raster(gdf: gpd.GeoDataFrame):
     Build a RasterBackend aligned 1:1 with the GDF using row/col attributes.
 
     Uses the shapefile's own row/col grid indices (normalised to 0-based)
-    as array coordinates — bypasses geographic rasterisation and guarantees
+    as array coordinates -- bypasses geographic rasterisation and guarantees
     that backend[rows_idx, cols_idx] maps back to the correct GDF rows.
     """
     from dissmodel.geo.raster.backend import RasterBackend
@@ -284,7 +290,6 @@ def _build_raster(gdf: gpd.GeoDataFrame):
     rows = gdf["row"].astype(int).values
     cols = gdf["col"].astype(int).values
 
-    # normalise to 0-based — shapefile indices may start at 1
     rows = rows - rows.min()
     cols = cols - cols.min()
 
@@ -293,7 +298,6 @@ def _build_raster(gdf: gpd.GeoDataFrame):
 
     backend = RasterBackend(shape=(n_rows, n_cols))
 
-    # mask: only cells present in the GDF are valid
     mask = np.zeros((n_rows, n_cols), dtype=bool)
     mask[rows, cols] = True
     backend.set("mask", mask)
@@ -345,7 +349,7 @@ def _make_scatter(
         )
 
     plt.suptitle(
-        f"BR-MANGUE — Raster vs TerraME — step {last_step}/{end_time}",
+        f"BR-MANGUE -- Raster vs TerraME -- step {last_step}/{end_time}",
         fontsize=11,
     )
     plt.tight_layout()
@@ -365,8 +369,8 @@ def _build_markdown(
     metrics:     dict[int, dict],
 ) -> str:
     lines = [
-        "# BR-MANGUE — Raster vs TerraME Validation Report\n\n",
-        f"**Steps:** 1 → {end_time} | "
+        "# BR-MANGUE -- Raster vs TerraME Validation Report\n\n",
+        f"**Steps:** 1 to {end_time} | "
         f"**Runtime:** {ras_ms:.1f} ms/step | "
         f"**Alt tolerance:** {alt_atol} m\n\n",
         "## Accuracy per band\n\n",

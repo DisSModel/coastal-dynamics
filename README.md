@@ -259,4 +259,4 @@ Developed by the **[LambdaGeo](https://lambdageo.github.io)** research group.
 
 ## include after
 
-python coastal_dynamics/executor/coastal_validation_full_executor.py run   --input  examples/data/input/elevacao_pol.zip   --output examples/data/output/validation   --param  golden_dir=tests/fixtures/golden   --param  end_time=30   --param  taxa_elevacao=0.05   --param  altura_mare=6.0   --param  checkpoints=[1,5,10,15,20,25,30]
+python coastal_dynamics/executor/coastal_validation_full_executor.py run   --input  examples/data/input/elevacao_pol.zip   --output examples/data/output/validation   --param  golden_dir=tests/fixtures/golden   --param  end_time=20   --param  taxa_elevacao=0.05   --param  altura_mare=6.0   --param  checkpoints=[1,5,10,15,20]
